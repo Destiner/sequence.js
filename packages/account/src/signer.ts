@@ -152,11 +152,7 @@ export class AccountSigner implements ethers.Signer {
       prepare.feeQuote,
       undefined,
       undefined,
-      this.options?.nonceSpace
-        ? {
-            nonceSpace: this.options.nonceSpace
-          }
-        : undefined
+      this.options?.nonceSpace !== undefined ? { nonce: { space: this.options.nonceSpace } } : undefined
     ) as Promise<ethers.providers.TransactionResponse> // Will always have a transaction response
   }
 

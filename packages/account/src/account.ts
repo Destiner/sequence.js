@@ -720,10 +720,7 @@ export class Account {
     txs: commons.transaction.Transactionish,
     chainId: ethers.BigNumberish,
     pstatus?: AccountStatus,
-    options?: {
-      nonceSpace?: ethers.BigNumberish
-      serial?: boolean
-    }
+    options?: { nonce?: ethers.BigNumberish | { space: ethers.BigNumberish } }
   ): Promise<commons.transaction.SignedTransactionBundle> {
     const status = pstatus || (await this.status(chainId))
     this.mustBeFullyMigrated(status)
@@ -739,8 +736,7 @@ export class Account {
       cantValidateBehavior: 'ignore'
     }
 
-    const nonceOptions = options?.nonceSpace && { space: options?.nonceSpace, serial: options?.serial }
-    const signed = await wallet.signTransactions(txs, nonceOptions, metadata)
+    const signed = await wallet.signTransactions(txs, options?.nonce, metadata)
 
     return {
       ...signed,
@@ -924,10 +920,7 @@ export class Account {
     quote?: FeeQuote,
     skipPreDecorate: boolean = false,
     callback?: (bundle: commons.transaction.IntendedTransactionBundle) => void,
-    options?: {
-      nonceSpace?: ethers.BigNumberish
-      serial?: boolean
-    }
+    options?: { nonce?: ethers.BigNumberish | { space: ethers.BigNumberish } }
   ): Promise<ethers.providers.TransactionResponse | undefined> {
     const status = await this.status(chainId)
 

@@ -298,32 +298,21 @@ export class Wallet<
     return this.signTransactions(bundle.transactions, bundle.nonce)
   }
 
-  async fetchNonceOrSpace(
-    nonce?: ethers.BigNumberish | { space: ethers.BigNumberish } | { serial: boolean }
-  ): Promise<ethers.BigNumberish> {
-    let spaceValue
-
-    if (nonce && (nonce as any).space !== undefined) {
-      // specified nonce "space"
-      spaceValue = ethers.BigNumber.from((nonce as any).space)
-    } else if (nonce === undefined) {
-      // default is random, aka parallel
+  async fetchNonceOrSpace(nonce?: ethers.BigNumberish | { space: ethers.BigNumberish }): Promise<ethers.BigNumber> {
+    if (nonce === undefined) {
       return this.randomNonce()
-    } else if (nonce && (nonce as any).serial === true) {
-      // next nonce determined from the chain
-      spaceValue = 0
-    } else {
-      // specific nonce is used
-      return nonce as ethers.BigNumberish
     }
 
-    const resultNonce = await this.reader().nonce(this.address, spaceValue)
-    if (resultNonce === undefined) throw new Error('Unable to determine nonce')
-    return commons.transaction.encodeNonce(spaceValue, resultNonce)
+    if (typeof nonce === 'object' && 'space' in nonce) {
+      const { space } = nonce
+      return ethers.BigNumber.from(await this.getNonce(space))
+    }
+
+    return ethers.BigNumber.from(nonce)
   }
 
   // Generate nonce with random space
-  randomNonce(): ethers.BigNumberish {
+  randomNonce(): ethers.BigNumber {
     const randomNonceSpace = ethers.BigNumber.from(ethers.utils.hexlify(ethers.utils.randomBytes(12)))
     const randomNonce = commons.transaction.encodeNonce(randomNonceSpace, 0)
     return randomNonce
@@ -331,7 +320,7 @@ export class Wallet<
 
   async signTransactions(
     txs: Deferrable<commons.transaction.Transactionish>,
-    nonce?: ethers.BigNumberish | { space: ethers.BigNumberish } | { serial: boolean },
+    nonce?: ethers.BigNumberish | { space: ethers.BigNumberish },
     metadata?: object
   ): Promise<commons.transaction.SignedTransactionBundle> {
     const transaction = await resolveArrayProperties<commons.transaction.Transactionish>(txs)
@@ -382,33 +371,20 @@ export class Wallet<
     return this.relayer.relay(signedBundle, quote)
   }
 
-  // sendTransaction will dispatch the transaction to the relayer for submission to the network.
-  // This method is able to send transactions in serial or parallel (default). You can specify
-  // a specific nonce, or let the wallet determine the next nonce on-chain (serial:true).
+  // sendTransaction sends transactions to the configured network
   //
-  // By default, nonces are generated randomly and assigned so transactioned can be executed
-  // in parallel. However, if you'd like to execute serially, pass { serial: true } as an option.
+  // When no nonce is specified, this method dispatches each transaction in a random nonce space, allowing for parallel dispatch of independent transactions.
+  // For groups of dependent transactions where order of execution matters, you should specify a specific shared nonce space when sending them.
+  // For use cases where parallel execution of transactions is not required, using the same nonce space also reduces gas costs.
+  // Lastly, you can also specify the exact already-encoded nonce space and space, but be aware that your transaction may fail if you provide an incorrect one (already used or not next in sequence).
   async sendTransaction(
     txs: Deferrable<commons.transaction.Transactionish>,
     options?: {
       quote?: FeeQuote
-      nonce?: ethers.BigNumberish
-      serial?: boolean
+      nonce?: ethers.BigNumberish | { space: ethers.BigNumberish }
     }
   ): Promise<ethers.providers.TransactionResponse> {
-    let nonce: ethers.BigNumberish
-    if (options?.nonce !== undefined) {
-      // specific nonce is used
-      nonce = options.nonce
-    } else if (options?.serial) {
-      // next nonce on wallet is used and detected on-chain
-      nonce = 0
-    } else {
-      // default is random, aka parallel
-      nonce = this.randomNonce()
-    }
-
-    const signed = await this.signTransactions(txs, nonce)
+    const signed = await this.signTransactions(txs, options?.nonce)
     const decorated = await this.decorateTransactions(signed)
     return this.sendSignedTransaction(decorated, options?.quote)
   }

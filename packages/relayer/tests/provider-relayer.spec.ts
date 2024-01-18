@@ -103,7 +103,7 @@ describe('Wallet integration', function () {
           const receiptPromise = relayer.wait(id, 10000)
           await new Promise(r => setTimeout(r, 1000))
 
-          const ogtx = await wallet.sendTransaction(txn, { serial: true })
+          const ogtx = await wallet.sendTransaction(txn, { nonce: { space: 0 } })
           const receipt = await receiptPromise
 
           expect(receipt).to.not.be.undefined
@@ -198,7 +198,7 @@ describe('Wallet integration', function () {
           const receiptPromise = relayer.wait(id, 10000)
           await new Promise(r => setTimeout(r, 1000))
 
-          const ogtx = await wallet.sendTransaction(txn, { serial: true })
+          const ogtx = await wallet.sendTransaction(txn, { nonce: { space: 0 } })
           const receipt = await receiptPromise
 
           expect(receipt).to.not.be.undefined
@@ -265,7 +265,7 @@ describe('Wallet integration', function () {
           const receiptPromise = relayer.wait(id, 10000)
           await new Promise(r => setTimeout(r, 1000))
 
-          const ogtx = await wallet.sendTransaction(txn, { serial: true })
+          const ogtx = await wallet.sendTransaction(txn, { nonce: { space: 0 } })
 
           // Post-txs
           await Promise.all(
@@ -364,7 +364,7 @@ describe('Wallet integration', function () {
           const receiptPromise = relayer.wait(id, 10000)
           await new Promise(r => setTimeout(r, 1000))
 
-          const ogtx = await wallet.sendTransaction(txn, { serial: true })
+          const ogtx = await wallet.sendTransaction(txn, { nonce: { space: 0 } })
 
           const receipt = await receiptPromise
 
@@ -445,7 +445,7 @@ describe('Wallet integration', function () {
           const receiptPromise = relayer.wait(id, 10000)
           await new Promise(r => setTimeout(r, 1000))
 
-          const ogtx = await wallet.sendTransaction(txn, { serial: true })
+          const ogtx = await wallet.sendTransaction(txn, { nonce: { space: 0 } })
           const receipt = await receiptPromise
 
           expect(receipt).to.not.be.undefined
@@ -518,7 +518,7 @@ describe('Wallet integration', function () {
             const receiptPromise = relayer.wait(id, 10000)
             await new Promise(r => setTimeout(r, 1000))
 
-            const ogtx = await wallet.sendTransaction(txn, { serial: true })
+            const ogtx = await wallet.sendTransaction(txn, { nonce: { space: 0 } })
 
             const receipt = await receiptPromise
 
