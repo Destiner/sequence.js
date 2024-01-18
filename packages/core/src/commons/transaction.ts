@@ -1,4 +1,4 @@
-import { BigNumberish, BytesLike, ethers } from 'ethers'
+import { BigNumber, BigNumberish, BytesLike, ethers } from 'ethers'
 import { subdigestOf } from './signature'
 import { walletContracts } from '@0xsequence/abi'
 
@@ -91,13 +91,13 @@ export function intendedTransactionID(bundle: IntendedTransactionBundle) {
   )
 }
 
-export function unpackMetaTransactionsData(data: BytesLike): [ethers.BigNumber, TransactionEncoded[]] {
+export function unpackMetaTransactionsData(data: BytesLike): [BigNumber, TransactionEncoded[]] {
   const res = ethers.utils.defaultAbiCoder.decode(['uint256', MetaTransactionsType], data)
   if (res.length !== 2 || !res[0] || !res[1]) throw new Error('Invalid meta transaction data')
   return [res[0], res[1]]
 }
 
-export function packMetaTransactionsData(nonce: ethers.BigNumberish, txs: Transaction[]): string {
+export function packMetaTransactionsData(nonce: BigNumberish, txs: Transaction[]): string {
   return ethers.utils.defaultAbiCoder.encode(['uint256', MetaTransactionsType], [nonce, sequenceTxAbiEncode(txs)])
 }
 
@@ -105,12 +105,7 @@ export function digestOfTransactions(nonce: BigNumberish, txs: Transaction[]) {
   return ethers.utils.keccak256(packMetaTransactionsData(nonce, txs))
 }
 
-export function subdigestOfTransactions(
-  address: string,
-  chainId: BigNumberish,
-  nonce: ethers.BigNumberish,
-  txs: Transaction[]
-): string {
+export function subdigestOfTransactions(address: string, chainId: BigNumberish, nonce: BigNumberish, txs: Transaction[]): string {
   return subdigestOf({ address, chainId, digest: digestOfTransactions(nonce, txs) })
 }
 
@@ -127,14 +122,14 @@ export function subdigestOfGuestModuleTransactions(guestModule: string, chainId:
 export function toSequenceTransactions(
   wallet: string,
   txs: (Transaction | ethers.providers.TransactionRequest)[]
-): { nonce?: ethers.BigNumberish; transaction: Transaction }[] {
+): { nonce?: BigNumberish; transaction: Transaction }[] {
   return txs.map(tx => toSequenceTransaction(wallet, tx))
 }
 
 export function toSequenceTransaction(
   wallet: string,
   tx: ethers.providers.TransactionRequest
-): { nonce?: ethers.BigNumberish; transaction: Transaction } {
+): { nonce?: BigNumberish; transaction: Transaction } {
   if (tx.to && tx.to !== ethers.constants.AddressZero) {
     return {
       nonce: tx.nonce,
@@ -200,11 +195,11 @@ export function fromTxAbiEncode(txs: TransactionEncoded[]): Transaction[] {
 //   return txs.map((t: Transaction) => ({ ...t, nonce }))
 // }
 
-export function encodeNonce(space: BigNumberish, nonce: BigNumberish): ethers.BigNumber {
-  const bspace = ethers.BigNumber.from(space)
-  const bnonce = ethers.BigNumber.from(nonce)
+export function encodeNonce(space: BigNumberish, nonce: BigNumberish): BigNumber {
+  const bspace = BigNumber.from(space)
+  const bnonce = BigNumber.from(nonce)
 
-  const shl = ethers.constants.Two.pow(ethers.BigNumber.from(96))
+  const shl = ethers.constants.Two.pow(BigNumber.from(96))
 
   if (!bnonce.div(shl).eq(ethers.constants.Zero)) {
     throw new Error('Space already encoded')
@@ -213,9 +208,9 @@ export function encodeNonce(space: BigNumberish, nonce: BigNumberish): ethers.Bi
   return bnonce.add(bspace.mul(shl))
 }
 
-export function decodeNonce(nonce: BigNumberish): [ethers.BigNumber, ethers.BigNumber] {
-  const bnonce = ethers.BigNumber.from(nonce)
-  const shr = ethers.constants.Two.pow(ethers.BigNumber.from(96))
+export function decodeNonce(nonce: BigNumberish): [BigNumber, BigNumber] {
+  const bnonce = BigNumber.from(nonce)
+  const shr = ethers.constants.Two.pow(BigNumber.from(96))
 
   return [bnonce.div(shr), bnonce.mod(shr)]
 }
