@@ -1,9 +1,8 @@
 import { ethers } from 'ethers'
 import { walletContracts } from '@0xsequence/abi'
-import { JsonRpcMethod } from './constants'
 import { BlockTag, eqBlockTag, parseBlockTag, partition, safeSolve } from './utils'
 import { promisify, getRandomInt } from '@0xsequence/utils'
-import { JsonRpcVersion, JsonRpcRequest, JsonRpcResponseCallback, JsonRpcHandlerFunc } from '@0xsequence/network'
+import { JsonRpcRouter, JsonRpcRequest, JsonRpcResponse, JsonRpcResponseCallback, EIP1193ProviderFunc, JsonRpcMiddlewareHandler } from '@0xsequence/network'
 
 export type MulticallOptions = {
   // number of calls to enqueue before calling.
@@ -23,7 +22,7 @@ export type MulticallOptions = {
 type QueueEntry = {
   request: JsonRpcRequest
   callback: JsonRpcResponseCallback
-  next: JsonRpcHandlerFunc
+  next: EIP1193ProviderFunc
   error?: boolean
   result?: JsonRpcResponseCallback
 }
@@ -31,15 +30,18 @@ type QueueEntry = {
 const DefaultMulticallOptions = {
   batchSize: 50,
   timeWindow: 50,
+
   // SequenceUtils: v2
   contract: '0xdbbFa3cB3B087B64F4ef5E3D20Dda2488AA244e6',
   verbose: false
 }
 
-export class Multicall {
-  public static DefaultOptions = { ...DefaultMulticallOptions }
+export const batchableJsonRpcMethods = [ 'eth_call', 'eth_getBalance', 'eth_getCode' ]
 
-  readonly batchableJsonRpcMethods = [JsonRpcMethod.ethCall, JsonRpcMethod.ethGetCode, JsonRpcMethod.ethGetBalance]
+// Multicall is a middleware that batches multiple JSON-RPC calls into a single
+// request. It is useful for reducing the number of requests to an Ethereum node.
+export class Multicall implements JsonRpcMiddlewareHandler {
+  public static DefaultOptions = { ...DefaultMulticallOptions }
 
   readonly multicallInterface = new ethers.Interface(walletContracts.sequenceUtils.abi)
 
@@ -48,39 +50,92 @@ export class Multicall {
   constructor(options?: Partial<MulticallOptions>) {
     this.options = options ? { ...Multicall.DefaultOptions, ...options } : Multicall.DefaultOptions
     if (this.options.batchSize <= 0) throw new Error(`Invalid batch size of ${this.options.batchSize}`)
+
+    this.provider = this.requestHandler
   }
 
+  private provider: EIP1193ProviderFunc
   private timeout: NodeJS.Timeout | undefined
   private queue = [] as QueueEntry[]
 
-  scheduleExecution = () => {
+  private scheduleExecution = () => {
     if (this.queue.length > 0) {
       if (this.timeout) clearTimeout(this.timeout)
       this.timeout = setTimeout(this.run, this.options.timeWindow)
     }
   }
 
-  handle = (next: JsonRpcHandlerFunc, request: JsonRpcRequest, callback: JsonRpcResponseCallback) => {
-    // Schedule for batching and return
-    if (this.batchableJsonRpcMethods.find(m => m === request.method)) {
-      this.queue.push({
-        request: request,
-        callback: callback,
-        next: next
-      })
-      if (this.options.verbose) console.log('Scheduling call', request.method)
-      this.scheduleExecution()
-      return
+  // TODO: change this.......... to use promise style..
+  // handle2 = (next: EIP1193ProviderFunc) => {
+  //   return (request: { jsonrpc: '2.0', id?: number, method: string, params?: any[], chainId?: number }): Promise<JsonRpcResponse> => {
+  //     // Schedule for batching and return
+  //     if (this.batchableJsonRpcMethods.find(m => m === request.method)) {
+  //       this.queue.push({
+  //         request: request,
+  //         callback: callback,
+  //         next: next
+  //       })
+  //       if (this.options.verbose) console.log('Scheduling call', request.method)
+  //       this.scheduleExecution()
+  //       return
+  //     }
+
+  //     if (this.options.verbose) console.log('Forwarded call', request.method)
+
+  //     // Move to next handler
+  //     return next(request, callback)
+  //   }
+  // }
+
+  requestHandler = (next: EIP1193ProviderFunc) => {
+    return async (request: { method: string, params?: any[], chainId?: number }): Promise<JsonRpcResponse> => {
+      if (batchableJsonRpcMethods.includes(request.method)) {
+        // TODO: push to queue and schedule execution
+        // .. this is kinda like the singleflight thing..
+        return new Promise<JsonRpcResponse>((resolve, reject) => {
+
+            // TODO: push it onto the queue.......
+
+            if (this.options.verbose) console.log('Scheduling call', request.method)
+            this.scheduleExecution()
+        })
+      }
+  
+      if (this.options.verbose) console.log('Forwarded call', request.method)
+
+      // Move to next handler
+      return next(request)
     }
-
-    if (this.options.verbose) console.log('Forwarded call', request.method)
-
-    // Move to next handler
-    return next(request, callback)
   }
 
+  // TODO: we need this, it will queue, etc...?
+  request(request: { method: string, params?: any[], chainId?: number }): Promise<JsonRpcResponse> {
+  }
+
+  // ..........
+  // handle0 = (next: EIP1193ProviderFunc, request: JsonRpcRequest, callback: JsonRpcResponseCallback) => {
+  // handle = (next: EIP1193ProviderFunc) => {
+  //   return (request: { jsonrpc: '2.0', id?: number, method: string, params?: any[], chainId?: number }): Promise<JsonRpcResponse> => {
+  //     // Schedule for batching and return
+  //     if (batchableJsonRpcMethods.find(m => m === request.method)) {
+  //       this.queue.push({
+  //         request: request,
+  //         callback: callback,
+  //         next: next
+  //       })
+  //       if (this.options.verbose) console.log('Scheduling call', request.method)
+  //       this.scheduleExecution()
+  //       return
+  //     }
+
+  //     if (this.options.verbose) console.log('Forwarded call', request.method)
+
+  //     // Move to next handler
+  //     return next(request, callback)
+  //   }
+  // }
+
   run = async () => {
-    /* eslint-disable no-var */
     if (this.options.verbose) console.log('Processing multicall')
 
     // Read items from queue
@@ -113,6 +168,7 @@ export class Multicall {
     }
 
     // Get next candidate
+    // TODO: why is "next" on the queue entry...?
     const next = items[0].next as JsonRpcHandlerFunc
     let blockTag: BlockTag | undefined
 
@@ -123,13 +179,13 @@ export class Multicall {
         if (item.next !== next) return false
 
         switch (item.request.method) {
-          case JsonRpcMethod.ethCall:
+          case 'eth_call':
             // Unsupported eth_call parameters
             if (item.request.params![0].from || item.request.params![0].gasPrice || item.request.params![0].value) {
               return false
             }
-          case JsonRpcMethod.ethGetBalance:
-          case JsonRpcMethod.ethGetCode:
+          case 'eth_getBalance':
+          case 'eth_getCode':
             // Mixed blockTags
             const itemBlockTag = parseBlockTag(item.request.params![1])
             if (blockTag === undefined) blockTag = itemBlockTag
@@ -157,7 +213,7 @@ export class Multicall {
     let callParams = items.map(v => {
       try {
         switch (v.request.method) {
-          case JsonRpcMethod.ethCall:
+          case 'eth_call':
             return {
               delegateCall: false,
               revertOnError: false,
@@ -166,7 +222,7 @@ export class Multicall {
               gasLimit: v.request.params![0].gas ? v.request.params![0].gas : 0,
               value: 0
             }
-          case JsonRpcMethod.ethGetCode:
+          case 'eth_getCode':
             return {
               delegateCall: false,
               revertOnError: false,
@@ -177,7 +233,7 @@ export class Multicall {
                 v.request.params![0]
               ])
             }
-          case JsonRpcMethod.ethGetBalance:
+          case 'eth_getBalance':
             return {
               delegateCall: false,
               revertOnError: false,
@@ -226,11 +282,10 @@ export class Multicall {
     // TODO: fix types below..
 
     const res = await safeSolve(
-      // @ts-ignore
       promisify<JsonRpcRequest, JsonRpcResponse>(next)({
         id: reqId!,
-        jsonrpc: JsonRpcVersion!,
-        method: JsonRpcMethod.ethCall!,
+        jsonrpc: '2.0',
+        method: 'eth_call',
         params: [
           {
             to: this.options.contract!,
@@ -239,10 +294,9 @@ export class Multicall {
           },
           blockTag
         ]
-        // @ts-ignore
       }),
       e => ({
-        jsonrpc: JsonRpcVersion!,
+        jsonrpc: '2.0',
         id: reqId!,
         result: undefined,
         error: e!
@@ -251,7 +305,6 @@ export class Multicall {
 
     // Error calling multicall
     // Forward all calls to middleware
-    // @ts-ignore
     if (res.error) {
       if (this.options.verbose) console.warn('Error calling multicall, forwarding one by one', res.error)
       return this.forward(items)
@@ -277,23 +330,23 @@ export class Multicall {
         this.forward(item)
       } else {
         switch (item.request.method) {
-          case JsonRpcMethod.ethCall:
+          case 'eth_call':
             item.callback(undefined, {
-              jsonrpc: item.request.jsonrpc!,
+              jsonrpc: '2.0',
               id: item.request.id!,
               result: decoded[1][index]
             })
             break
-          case JsonRpcMethod.ethGetCode:
+          case 'eth_getCode':
             item.callback(undefined, {
-              jsonrpc: item.request.jsonrpc!,
+              jsonrpc: '2.0',
               id: item.request.id!,
               result: ethers.AbiCoder.defaultAbiCoder().decode(['bytes'], decoded[1][index])[0]
             })
             break
-          case JsonRpcMethod.ethGetBalance:
+          case 'eth_getBalance':
             item.callback(undefined, {
-              jsonrpc: item.request.jsonrpc!,
+              jsonrpc: '2.0',
               id: item.request.id!,
               result: ethers.AbiCoder.defaultAbiCoder().decode(['uint256'], decoded[1][index])[0]
             })

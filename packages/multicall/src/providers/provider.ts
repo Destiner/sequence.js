@@ -1,8 +1,6 @@
 import { ethers } from 'ethers'
-import { promisify, getRandomInt } from '@0xsequence/utils'
-import { Multicall, MulticallOptions } from '../multicall'
-import { JsonRpcMethod } from '../constants'
-import { JsonRpcVersion, JsonRpcRequest, JsonRpcResponseCallback } from '@0xsequence/network'
+import { Multicall, MulticallOptions, batchableJsonRpcMethods } from '../multicall'
+import { EIP1193Provider, JsonRpcSender } from '@0xsequence/network'
 
 export const ProxyMethods = [
   'getNetwork',
@@ -25,13 +23,13 @@ export const ProxyMethods = [
   'getBlockWithTransactions'
 ]
 
-export class MulticallProvider extends ethers.AbstractProvider {
+export class MulticallProvider extends ethers.AbstractProvider implements EIP1193Provider, JsonRpcSender {
   private multicall: Multicall
 
   constructor(
-    private provider: ethers.Provider,
+    provider: ethers.Provider,// | EIP1193Provider,
+    multicall?: Multicall | Partial<MulticallOptions>,
     network?: ethers.Networkish,
-    multicall?: Multicall | Partial<MulticallOptions>
   ) {
     super(network)
 
@@ -57,61 +55,94 @@ export class MulticallProvider extends ethers.AbstractProvider {
     return provider.getResolver(await name)
   }
 
-  next = async (req: JsonRpcRequest, callback: JsonRpcResponseCallback) => {
-    try {
-      switch (req.method) {
-        case JsonRpcMethod.ethCall:
-          this.callback(req, callback, await this.provider.call(req.params![0], req.params![1]))
-          break
 
-        case JsonRpcMethod.ethGetCode:
-          this.callback(req, callback, await this.provider.getCode(req.params![0], req.params![1]))
-          break
-
-        case JsonRpcMethod.ethGetBalance:
-          this.callback(req, callback, await this.provider.getBalance(req.params![0], req.params![1]))
-          break
-      }
-    } catch (e) {
-      this.callback(req, callback, undefined, e)
+  request(request: { id?: number, method: string, params?: any[], chainId?: number }): Promise<any> {
+    if (batchableJsonRpcMethods.includes(request.method)) {
+      return this.multicall.request(request)
+    } else {
+      return this.provider.request(request)
     }
+
+    // switch (request.method) {
+    //   case JsonRpcMethod.ethCall:
+    //     return this.multicall.request(request)
+    //     return this.provider.call(request.params![0], request.params![1])
+
+    //   case JsonRpcMethod.ethGetCode:
+    //     return this.provider.getCode(request.params![0], request.params![1])
+    //     // this.callback(req, callback, await this.provider.getCode(req.params![0], req.params![1]))
+    //     // break
+
+    //   case JsonRpcMethod.ethGetBalance:
+    //     return this.provider.getBalance(request.params![0], request.params![1])
+    //     // this.callback(req, callback, await this.provider.getBalance(req.params![0], req.params![1]))
+    //     // break
+    //   default:
+    //     // don't use the middleware.. just call the provider directly
+    //     return this.provider.request(request)
+    // }
   }
 
-  private callback(req: JsonRpcRequest, callback: JsonRpcResponseCallback, resp: any, err?: any) {
-    callback(err, {
-      jsonrpc: JsonRpcVersion,
-      id: req.id!,
-      result: resp,
-      error: err
-    })
+  send(method: string, params?: any[], chainId?: number): Promise<any> {
+    return this.request({ method, params, chainId })
   }
+
+  // next0 = async (req: JsonRpcRequest, callback: JsonRpcResponseCallback) => {
+  //   try {
+  //     switch (req.method) {
+  //       case JsonRpcMethod.ethCall:
+  //         this.callback(req, callback, await this.provider.call(req.params![0], req.params![1]))
+  //         break
+
+  //       case JsonRpcMethod.ethGetCode:
+  //         this.callback(req, callback, await this.provider.getCode(req.params![0], req.params![1]))
+  //         break
+
+  //       case JsonRpcMethod.ethGetBalance:
+  //         this.callback(req, callback, await this.provider.getBalance(req.params![0], req.params![1]))
+  //         break
+  //     }
+  //   } catch (e) {
+  //     this.callback(req, callback, undefined, e)
+  //   }
+  // }
+
+  // TODO/XXX: this method is useless.
+  // private callback(req: JsonRpcRequest, callback: JsonRpcResponseCallback, resp: any, err?: any) {
+  //   callback(err, {
+  //     jsonrpc: '2.0',
+  //     id: req.id!,
+  //     result: resp,
+  //     error: err
+  //   })
+  // }
 
   async call(
     transaction: ethers.TransactionRequest,
     blockTag?: string | number | Promise<ethers.BlockTag>
   ): Promise<string> {
-    return this.rpcCall(JsonRpcMethod.ethCall, transaction, blockTag)
+    return this.request({ method: 'eth_call', params: [transaction, blockTag] })
   }
 
-  async getCode(addressOrName: string | Promise<string>, blockTag?: string | number | Promise<ethers.BlockTag>): Promise<string> {
-    return this.rpcCall(JsonRpcMethod.ethGetCode, addressOrName, blockTag)
+  async getCode(addressOrName: string | Promise<string>, blockTag?: ethers.BlockTag): Promise<string> {
+    return this.request({ method: 'eth_getCode', params: [addressOrName, blockTag] })
   }
 
   async getBalance(
     addressOrName: string | Promise<string>,
-    blockTag?: string | number | Promise<ethers.BlockTag>
+    blockTag?: ethers.BlockTag
   ): Promise<bigint> {
-    return this.rpcCall(JsonRpcMethod.ethGetBalance, addressOrName, blockTag)
+    return this.request({ method: 'eth_getBalance', params: [addressOrName, blockTag] })
   }
 
-  async rpcCall(method: string, ...params: any[]): Promise<any> {
-    const reqId = getRandomInt()
-    const resp = await promisify(this.multicall.handle)(this.next, {
-      jsonrpc: JsonRpcVersion,
-      id: reqId,
-      method: method,
-      params: params
-    })
-    return resp!.result
-  }
+  // async rpcCall(method: string, ...params: any[]): Promise<any> {
+  //   const reqId = getRandomInt()
+  //   const resp = await promisify(this.multicall.handle)(this.next, {
+  //     jsonrpc: '2.0',
+  //     id: reqId,
+  //     method: method,
+  //     params: params
+  //   })
+  //   return resp!.result
+  // }
 }

@@ -1,14 +1,13 @@
 import { ethers, Signer } from 'ethers'
 import * as Ganache from 'ganache'
 import { CallReceiverMock } from '@0xsequence/wallet-contracts'
-import { JsonRpcRouter, JsonRpcExternalProvider } from '@0xsequence/network'
+import { JsonRpcRouter, JsonRpcHandler } from '@0xsequence/network'
 
 import chaiAsPromised from 'chai-as-promised'
 import * as chai from 'chai'
-import { MulticallExternalProvider, multicallMiddleware, MulticallProvider } from '../src/providers'
+import { multicallMiddleware, MulticallProvider } from '../src/providers'
 import { SpyProxy } from './utils'
 import { getRandomInt } from '@0xsequence/utils'
-import { JsonRpcMethod } from '../src/constants'
 import { MulticallOptions, Multicall } from '../src/multicall'
 
 const { JsonRpcEngine } = require('json-rpc-engine')
@@ -114,9 +113,9 @@ describe('Multicall integration', function () {
         func: ganache.provider.send,
         callback: (method: string, _: any[]) => {
           switch (method) {
-            case JsonRpcMethod.ethCall:
-            case JsonRpcMethod.ethGetCode:
-            case JsonRpcMethod.ethGetBalance:
+            case 'eth_call':
+            case 'eth_getCode':
+            case 'eth_getBalance':
               callCounter++
           }
         }
@@ -137,26 +136,26 @@ describe('Multicall integration', function () {
   const options = [
     {
       name: 'Ether.js provider wrapper',
-      provider: (options?: Partial<MulticallOptions>) => new MulticallProvider(ganache.spyProxy!, ganache.chainId, options)
+      provider: (options?: Partial<MulticallOptions>) => new MulticallProvider(ganache.spyProxy!, options, ganache.chainId)
     },
     {
       name: 'Json Rpc Router (Sequence)',
       provider: (options?: Partial<MulticallOptions>) =>
         new ethers.BrowserProvider(
-          new JsonRpcRouter([multicallMiddleware(options)], new JsonRpcExternalProvider(ganache.spyProxy!))
+          new JsonRpcRouter([multicallMiddleware(options)], new JsonRpcHandler(ganache.spyProxy!))
         )
     },
     {
       name: 'Ether.js external provider wrapper',
       provider: (conf?: Partial<MulticallOptions>) =>
-        new ethers.BrowserProvider(new MulticallExternalProvider(new JsonRpcExternalProvider(ganache.spyProxy!), conf))
+        new ethers.BrowserProvider(new MulticallProvider(new JsonRpcHandler(ganache.spyProxy!), conf))
     },
     {
       name: 'Provider Engine (json-rpc-engine)',
       provider: (conf?: Partial<MulticallOptions>) => {
         const engine = new JsonRpcEngine()
 
-        engine.push(providerAsMiddleware(new MulticallExternalProvider(new JsonRpcExternalProvider(ganache.spyProxy!), conf)))
+        engine.push(providerAsMiddleware(new MulticallExternalProvider(new JsonRpcHandler(ganache.spyProxy!), conf)))
 
         return new ethers.BrowserProvider(providerFromEngine(engine))
       }
@@ -170,9 +169,9 @@ describe('Multicall integration', function () {
           func: web3HttpProvider.send,
           callback: (p: any) => {
             switch (p.method) {
-              case JsonRpcMethod.ethCall:
-              case JsonRpcMethod.ethGetCode:
-              case JsonRpcMethod.ethGetBalance:
+              case 'eth_call':
+              case 'eth_getCode':
+              case 'eth_getBalance':
                 callCounter++
             }
           }
@@ -182,21 +181,21 @@ describe('Multicall integration', function () {
     },
     {
       name: 'Ether.js provider wrapper (without proxy)',
-      provider: (options?: Partial<MulticallOptions>) => new MulticallProvider(ganache.provider!, ganache.chainId, options),
+      provider: (options?: Partial<MulticallOptions>) => new MulticallProvider(ganache.provider!, options, ganache.chainId),
       ignoreCount: true
     },
     {
       name: 'Json Rpc Router (Sequence) (without proxy)',
       provider: (options?: Partial<MulticallOptions>) =>
         new ethers.BrowserProvider(
-          new JsonRpcRouter([multicallMiddleware(options)], new JsonRpcExternalProvider(ganache.provider!))
+          new JsonRpcRouter([multicallMiddleware(options)], new JsonRpcHandler(ganache.provider!))
         ),
       ignoreCount: true
     },
     {
       name: 'Ether.js external provider wrapper (without proxy)',
       provider: (conf?: Partial<MulticallOptions>) =>
-        new ethers.BrowserProvider(new MulticallExternalProvider(new JsonRpcExternalProvider(ganache.provider!), conf)),
+        new ethers.BrowserProvider(new MulticallExternalProvider(new JsonRpcHandler(ganache.provider!), conf)),
       ignoreCount: true
     },
     {
@@ -204,7 +203,7 @@ describe('Multicall integration', function () {
       provider: (conf?: Partial<MulticallOptions>) => {
         const engine = new JsonRpcEngine()
 
-        engine.push(providerAsMiddleware(new MulticallExternalProvider(new JsonRpcExternalProvider(ganache.provider!), conf)))
+        engine.push(providerAsMiddleware(new MulticallExternalProvider(new JsonRpcHandler(ganache.provider!), conf)))
 
         return new ethers.BrowserProvider(providerFromEngine(engine))
       },
@@ -219,9 +218,9 @@ describe('Multicall integration', function () {
           func: web3HttpProvider.send,
           callback: (p: any) => {
             switch (p.method) {
-              case JsonRpcMethod.ethCall:
-              case JsonRpcMethod.ethGetCode:
-              case JsonRpcMethod.ethGetBalance:
+              case 'eth_call':
+              case 'eth_getCode':
+              case 'eth_getBalance':
                 callCounter++
             }
           }
@@ -440,7 +439,7 @@ describe('Multicall integration', function () {
         })
 
         it('Should detect network', async () => {
-          const net = await (provider as ethers.AbstractProvider).detectNetwork()
+          const net = await provider.getNetwork()
           expect(net.chainId).to.equal(1337)
         })
 
