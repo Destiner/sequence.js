@@ -20,7 +20,7 @@ const { expect } = chai.use(chaiAsPromised)
 const deterministic = false
 
 describe('Account', () => {
-  let provider1: ethers.BrowserProvider
+  let provider1: ethers.JsonRpcProvider
   let provider2: ethers.JsonRpcProvider
 
   let signer1: ethers.Signer
@@ -89,7 +89,7 @@ describe('Account', () => {
   }
 
   before(async () => {
-    provider1 = new ethers.BrowserProvider(hardhat.network.provider as any)
+    provider1 = new ethers.JsonRpcProvider('http://127.0.0.1:7146', undefined, { cacheTimeout: -1 })
     provider2 = new ethers.JsonRpcProvider('http://127.0.0.1:7048', undefined, { cacheTimeout: -1 })
 
     // TODO: Implement migrations on local config tracker
