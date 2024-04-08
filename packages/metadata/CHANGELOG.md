@@ -1,5 +1,11 @@
 # @0xsequence/metadata
 
+## 2.0.0
+
+### Major Changes
+
+- Update externalLink property to external_link
+
 ## 1.9.14
 
 ### Patch Changes
